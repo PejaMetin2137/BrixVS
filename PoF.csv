@@ -1,10 +1,10 @@
-﻿"kod_przedmiotu	  		";typ;nazwa;stan; cena_bazowa (V_Base) ;kod_wady;wspolczynnik_kary; wycena_algorytmu(V_suggested) 
-sw0201;MINIFIG;Clone Trooper (Phase 1) - Large Eyes;USED; 27,00  PLN ;NO_FLAW;0%; 27,00  PLN 
-sw0002a;MINIFIG;Boba Fett - Bluish Grays;USED; 140,00  PLN ;BITE_MARKS;20%; 112,00  PLN 
-sw0188;MINIFIG;Imperial Stormtrooper - Black Head, Dotted Mouth Helmet;USED; 17,00  PLN ;YELLOWED_PARTS_MINIFIGS;30%; 11,90  PLN 
-sw0223;MINIFIG;Clone Trooper (Phase 1) - Black Visor, Pauldron, and Kama, Large Eyes;NEW; 100,00  PLN ;NO_FLAW;0%; 100,00  PLN 
-7180;SET;B-wing at Rebel Control Center;USED; 260,00  PLN ;MISSING_PARTS3;25%; 195,00  PLN 
-7144;SET;Slave I;USED; 300,00  PLN ;MISSING_MINIFIGURES;40%; 180,00  PLN 
-8039;SET;Venator-Class Republic Attack Cruiser;USED; 833,00  PLN ;YELLOWED_PARTS_SETS;30%; 583,10  PLN 
-75367;SET;Venator-Class Republic Attack Cruiser - UCS;USED; 1 809,00  PLN ;MISSING_BOX, MISSING_MANUAL;35%; 1 175,85  PLN 
-"								";;;;;;;
+﻿"kod_przedmiotu	  		";typ;nazwa;rok_wydania;stan; cena_bazowa (V_Base) ;kod_wady;wspolczynnik_kary; wycena_algorytmu(V_suggested) 
+sw0201;MINIFIG;Clone Trooper (Phase 1) - Large Eyes;2008;USED; 27,00  PLN ;NO_FLAW;0%; 27,00  PLN 
+sw0002a;MINIFIG;Boba Fett - Bluish Grays;2006;USED; 140,00  PLN ;BITE_MARKS;20%; 112,00  PLN 
+sw0188;MINIFIG;Imperial Stormtrooper - Black Head, Dotted Mouth Helmet;2007;USED; 17,00  PLN ;YELLOWED_PARTS_MINIFIGS;30%; 11,90  PLN 
+sw0223;MINIFIG;Clone Trooper (Phase 1) - Black Visor, Pauldron, and Kama, Large Eyes;2008;NEW; 100,00  PLN ;NO_FLAW;0%; 100,00  PLN 
+7180;SET;B-wing at Rebel Control Center;1999;USED; 260,00  PLN ;MISSING_PARTS3;25%; 195,00  PLN 
+7144;SET;Slave I;2001;USED; 300,00  PLN ;MISSING_MINIFIGURES;40%; 180,00  PLN 
+8039;SET;Venator-Class Republic Attack Cruiser;2008;USED; 833,00  PLN ;YELLOWED_PARTS_SETS;30%; 583,10  PLN 
+75367;SET;Venator-Class Republic Attack Cruiser - UCS;2024;USED; 1 809,00  PLN ;MISSING_BOX, MISSING_MANUAL;20%;1447,20 PLN
+"								";;;;;;;;
