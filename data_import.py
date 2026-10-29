@@ -1,101 +1,174 @@
+"""Skrypt ETL: wczytuje slownik wad, kary wiekowe i przedmioty z plikow CSV do bazy danych.
+
+Uruchomienie (z aktywnym venv i dzialajaca baza w Dockerze):
+    python data_import.py
+
+Skrypt mozna uruchamiac wielokrotnie: istniejace rekordy sa aktualizowane, a nie dublowane.
+"""
+
+import os
+
 import pandas as pd
-from database import SessionLocal
-from models import ConditionDefect, MarketplaceItem
 
-def clear_amount(kwota_str):
-    """Czysci i konwertuje kwote do typu float."""
-    if pd.isna(kwota_str):
-        return 0.0
-    try:
-        # Usuwanie tekstu i zamiana przecinka na kropkę
-        return float(str(kwota_str).replace(" PLN", "").replace(",", ".").strip())
-    except (ValueError, TypeError):
-        return 0.0
+from csv_utils import (
+    clear_amount,
+    clear_int,
+    clear_percent,
+    find_column,
+    load_csv_data,
+    normalize_code,
+    split_defect_codes,
+)
+from database import Base, SessionLocal, engine
+from models import AgePenalty, ConditionDefect, MarketplaceItem
 
-def load_csv_data(path, required_column):
-    """Wczytuje dane z pliku CSV i sprawdza, czy wymagana kolumna istnieje."""
-    try:
-        df = pd.read_csv(path, sep=";", encoding="utf-8-sig", on_bad_lines='skip')
-        df.columns = [str(col).strip().lower() for col in df.columns]  # Normalizacja nazw kolumn
+PLIK_WADY = "damage_table.csv"
+PLIK_KARY_WIEKOWE = "kary_wiekowe.csv"
+PLIK_PRZEDMIOTY = "PoF.csv"
 
-        if required_column.lower() not in df.columns:
-            raise ValueError(f"BLAD: Kolumna '{required_column}' nie zostala znaleznia w pliku {path}.")
 
-        return df
-    except FileNotFoundError:
-        print(f"BLAD: Plik {path} nie zostal znaleziony.")
-        raise
-    except Exception as e:
-        print(f"BLAD: Wystapil blad podczas wczytywania pliku {path}: {e}")
-        raise
+def import_defects(db):
+    """1. Slownik wad (damage_table.csv)."""
+    print(f"Importowanie: {PLIK_WADY}")
+    df = load_csv_data(PLIK_WADY, "kod_wady")
+    nowe, zaktualizowane = 0, 0
+
+    for _, row in df.iterrows():
+        kod = normalize_code(row.get("kod_wady"))
+        if not kod:
+            continue
+
+        dane = dict(
+            nazwa_wady=str(row.get("nazwa_wady", "")).strip(),
+            typ_przedmiotu=str(row.get("typ_przedmiotu", "")).strip().upper(),
+            kara_procentowa=clear_percent(row.get("kara_procentowa")),
+            opis=str(row.get("opis")).strip() if not pd.isna(row.get("opis")) else None,
+        )
+
+        wada = db.query(ConditionDefect).filter(ConditionDefect.kod_wady == kod).first()
+        if wada is None:
+            db.add(ConditionDefect(kod_wady=kod, **dane))
+            nowe += 1
+        else:
+            for pole, wartosc in dane.items():
+                setattr(wada, pole, wartosc)
+            zaktualizowane += 1
+
+    db.flush()
+    print(f"  Wady: {nowe} nowych, {zaktualizowane} zaktualizowanych")
+
+
+def import_age_penalties(db):
+    """2. Kary zalezne od wieku zestawu (kary_wiekowe.csv) - plik opcjonalny."""
+    if not os.path.exists(PLIK_KARY_WIEKOWE):
+        print(f"Pomijam {PLIK_KARY_WIEKOWE} (brak pliku) - uzywane beda kary domyslne ze slownika wad")
+        return
+
+    print(f"Importowanie: {PLIK_KARY_WIEKOWE}")
+    df = load_csv_data(PLIK_KARY_WIEKOWE, "kod_wady")
+    licznik = 0
+    wyczyszczone = set()
+
+    for _, row in df.iterrows():
+        kod = normalize_code(row.get("kod_wady"))
+        wiek_od = clear_int(row.get("wiek_od"))
+        wiek_do = clear_int(row.get("wiek_do"))
+        if not kod or wiek_od is None or wiek_do is None:
+            continue
+
+        wada = db.query(ConditionDefect).filter(ConditionDefect.kod_wady == kod).first()
+        if wada is None:
+            print(f"  UWAGA: kod '{kod}' z {PLIK_KARY_WIEKOWE} nie istnieje w slowniku wad - pomijam")
+            continue
+
+        # Przy pierwszym wierszu danej wady usuwamy jej stare przedzialy (plik jest zrodlem prawdy)
+        if wada.id not in wyczyszczone:
+            db.query(AgePenalty).filter(AgePenalty.wada_id == wada.id).delete()
+            wyczyszczone.add(wada.id)
+
+        db.add(AgePenalty(wada_id=wada.id, wiek_od=wiek_od, wiek_do=wiek_do, kara=clear_percent(row.get("kara"))))
+        licznik += 1
+
+    db.flush()
+    print(f"  Kary wiekowe: {licznik} przedzialow")
+
+
+def import_items(db):
+    """3. Przedmioty (PoF.csv) wraz z powiazaniami do wad."""
+    print(f"Importowanie: {PLIK_PRZEDMIOTY}")
+    df = load_csv_data(PLIK_PRZEDMIOTY, "kod_przedmiotu")
+
+    kol_cena = find_column(df, "cena_bazowa")
+    kol_wycena = find_column(df, "wycena_algorytmu")
+    kol_rok = find_column(df, "rok")
+    if kol_rok is None:
+        print("  UWAGA: brak kolumny 'rok_wydania' w PoF.csv - kary wiekowe nie beda stosowane")
+
+    nowe, zaktualizowane = 0, 0
+    nieznane_kody = set()
+
+    for _, row in df.iterrows():
+        kod = str(row.get("kod_przedmiotu", "")).strip() if not pd.isna(row.get("kod_przedmiotu")) else ""
+        if not kod:
+            continue
+
+        typ = str(row.get("typ", "")).strip().upper()
+        dane = dict(
+            typ=typ,
+            nazwa=str(row.get("nazwa", "")).strip(),
+            stan=str(row.get("stan", "")).strip().upper(),
+            rok_wydania=clear_int(row.get(kol_rok)) if kol_rok else None,
+            cena_bazowa=clear_amount(row.get(kol_cena)),
+            wspolczynnik_kary=clear_percent(row.get("wspolczynnik_kary")),
+            wycena_algorytmu=clear_amount(row.get(kol_wycena)),
+        )
+
+        # Powiazanie z wadami ze slownika
+        wady = []
+        for kod_wady in split_defect_codes(row.get("kod_wady")):
+            wada = db.query(ConditionDefect).filter(ConditionDefect.kod_wady == kod_wady).first()
+            if wada is None:
+                nieznane_kody.add(kod_wady)
+                continue
+            if wada.typ_przedmiotu and wada.typ_przedmiotu != typ:
+                print(f"  UWAGA: {kod}: wada {kod_wady} dotyczy typu {wada.typ_przedmiotu}, a przedmiot to {typ}")
+            wady.append(wada)
+
+        przedmiot = db.query(MarketplaceItem).filter(MarketplaceItem.kod_przedmiotu == kod).first()
+        if przedmiot is None:
+            przedmiot = MarketplaceItem(kod_przedmiotu=kod, **dane)
+            db.add(przedmiot)
+            nowe += 1
+        else:
+            for pole, wartosc in dane.items():
+                setattr(przedmiot, pole, wartosc)
+            zaktualizowane += 1
+        przedmiot.wady = wady
+
+    print(f"  Przedmioty: {nowe} nowych, {zaktualizowane} zaktualizowanych")
+    if nieznane_kody:
+        print(f"  UWAGA: kody wad nieznalezione w slowniku (popraw PoF.csv): {', '.join(sorted(nieznane_kody))}")
+
 
 def data_import():
+    # Tworzy brakujace tabele (np. nowe: przedmiot_wady, kary_wiekowe)
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
-    print("Rozpoczynanie importu danych z pliku CSV...")
-
+    print("Rozpoczynanie importu danych z plikow CSV...")
     try:
-        
-        # 1. Import danych ze slownika wad (damage_table.csv)
-
-        print("Importowanie danych z pliku CSV: damage_table.csv")
-        df_flaws = load_csv_data("damage_table.csv", "kod_wady")
-        flaw_counter = 0
-
-        for _, row in df_flaws.iterrows():
-            if pd.isna(row.get("kod_wady")) or not str(row.get("kod_wady")).strip() == "":  
-                continue
-
-            if not db.query(ConditionDefect).filter(ConditionDefect.kod_wady == str(row.get("kod_wady")).strip()).first():
-                new_flaw = ConditionDefect(
-                    kod_wady=str(row.get("kod_wady")).strip(),
-                    nazwa_wady=str(row.get("nazwa_wady", "")).strip(),
-                    typ_przedmiotu=str(row.get("typ_przedmiotu", "")).strip(),
-                    kara_procentowa=clear_amount(row.get("kara_procentowa")),
-                    opis=str(row.get("opis", "")).strip() if not pd.isna(row.get("opis")) else None
-                )
-                db.add(new_flaw)
-                flaw_counter += 1
-
-        print(f"Pomyslnie zaimportowano {flaw_counter} nowych wad")
-
-
-        # 2. Import danych przedmiotow (PoF.csv)
-
-        print("Importowanie danych z pliku CSV: PoF.csv")
-        df_pof = load_csv_data("PoF.csv", "kod_przedmiotu")
-        item_counter = 0
-
-        for _, row in df_pof.iterrows():
-            if pd.isna(row.get("kod_przedmiotu")) or str(row.get("kod_przedmiotu")).strip() == "":  
-                continue
-
-            item_code_str = str(row.get("kod_przedmiotu")).strip()
-            
-            if not db.query(MarketplaceItem).filter(MarketplaceItem.kod_przedmiotu == item_code_str).first():
-                new_item = MarketplaceItem(
-                    kod_przedmiotu=item_code_str,
-                    typ=str(row.get("typ", "")).strip(),
-                    nazwa=str(row.get("nazwa", "")).strip(),
-                    stan=str(row.get("stan", "")).strip(),
-                    cena_bazowa=clear_amount(row.get("cena_bazowa (V_Base)")),
-                    kod_wady=str(row.get("kod_wady", "")) if not pd.isna(row.get("kod_wady")) else None,
-                    wspolczynnik_kary=clear_amount(row.get("wspolczynnik_kary")),
-                    wycena_algorytmu=clear_amount(row.get("wycena_algorytmu(V_suggested)", row.get("wycena_algorytmu")))
-                )
-                db.add(new_item)
-                item_counter += 1
-                
-        print(f"Pomyslnie zaimportowano {item_counter} nowych przedmiotow")
-        
-        # Zapis wszystkich zmian w bazie danych
+        import_defects(db)
+        import_age_penalties(db)
+        import_items(db)
         db.commit()
-
+        print("Import zakonczony pomyslnie.")
     except Exception as e:
         db.rollback()
-        print(f"Wystapil blad podczas importu danych: {e}")
+        print(f"BLAD podczas importu danych (zmiany wycofane): {e}")
+        raise
     finally:
         db.close()
-        print("Import danych zakonczony.")
+
 
 if __name__ == "__main__":
     data_import()

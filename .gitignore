@@ -1,0 +1,16 @@
+# Srodowisko wirtualne Pythona
+venv/
+.venv/
+
+# Klucze API i hasla - NIGDY nie wysylac na GitHuba
+.env
+
+# Pliki tymczasowe Pythona
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Ustawienia edytora
+.vscode/
