@@ -6,8 +6,8 @@ BITE_MARKS;Slady ugryzien;MINIFIG;0.2;Czeste uszkodzenia figurek, ktore były uz
 LOOSE_JOINTS;Luzne/wyrobione stawy;MINIFIG;0.15;Czesty problem figurek, ktore byly rozkladane i ukladane ponownie wiele razy, elementy ruszaja się bardzo latwo i luzno
 YELLOWED_PARTS_MINIFIGS;Pozolknięcia elementow figurek;MINIFIG;0.3;Problem elementow, ktore mialy dlugi kontakt ze sloncem, najczesciej biale oraz jasnoszare elementy zmieniaja odcien w strone zoltego
 YELLOWED_PARTS_SETS;Pozolknięcia elementow zestawu;SET;0.3;Problem elementow, ktore mialy dlugi kontakt ze sloncem, najczesciej biale oraz jasnoszare elementy zmieniaja odcien w strone zoltego
-MISSING_BOX;Brak oryginalnego pudelka;SET;0.25;Zestaw bez oryginalnego pudelka, ktore czesto jest duza czescia jego wartosci
-"MISSING_MANUAL	SET";Brak oryginalnej instrukcji;SET;0.1;Zestaw bez oryginalnej instrukcji
+MISSING_BOX;Brak oryginalnego pudelka;SET;0.15;Zestaw bez oryginalnego pudelka, ktore czesto jest duza czescia jego wartosci
+MISSING_MANUAL;Brak oryginalnej instrukcji;SET;0.05;Zestaw bez oryginalnej instrukcji
 MISSING_MINIFIGURES;Brak minifigurek;SET;0.4;Zestaw bez minifigurek, ktore sa w duzej mierze okresleniem jego wartości oraz popularnosci
 MISSING_PARTS_EXCL;Brak eksluzywnych dla zestawu elementow;SET;0.2;Zestaw bez elementow, ktore wystapily tylko i wylacznie w tym zestawie
 MISSING_PARTS1;Braki mniej niz 10% elementow;SET;0.15;Zestaw niekompletny, ktoremu brakuje elementow łatwych do dokupienia (kompletność > 90%)

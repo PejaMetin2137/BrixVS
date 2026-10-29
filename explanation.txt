@@ -1,0 +1,45 @@
+Opis do działania pliku data_import.py
+
+Cały plik import_danych.py realizuje klasyczny w architekturze systemów proces ETL (Extract, Transform, Load – Pobierz, Przekształć, Załaduj). Jest to mechanizm pomostowy między surowymi plikami z danymi (Excel) a relacyjną bazą danych PostgreSQL działającą w Dockerze.
+Oto dokładny opis tego, co krok po kroku dzieje się pod maską tego skryptu:
+
+1. Ekstrakcja (Extract) i Transformacja (Transform)
+Skrypt wykorzystuje bibliotekę pandas (funkcję read_excel) do wczytania plików .xlsx bezpośrednio do pamięci operacyjnej w postaci tzw. DataFrame'ów.
+Twoja funkcja clear_amount pełni tutaj kluczową rolę transformacyjną. W bazach danych wartości finansowe (oraz ułamkowe mnożniki) muszą być przechowywane jako numeryczny typ zmiennoprzecinkowy (Float). Funkcja ta "czyści" surowe ciągi znaków (np. "120,50 PLN"), usuwając walutę i zamieniając polski przecinek na programistyczną kropkę, aby baza mogła bezbłędnie wykonywać na nich operacje matematyczne przy szacowaniu wartości zestawów.
+
+2. Idempotentność skryptu (Kluczowe w chmurze i konteneryzacji)
+Wewnątrz pętli iterujących po wierszach z Excela znajduje się instrukcja:
+istnieje = db.query(...).filter(...).first()
+Skrypt najpierw zadaje bazie pytanie: Czy kod wady "TORSO_CRACK" (lub numer figurki) już tu jest? Dopiero gdy odpowiedź brzmi "nie", tworzy nowy obiekt i przygotowuje go do zapisu.
+To sprawia, że Twój kod jest idempotentny. Oznacza to, że możesz uruchomić ten skrypt 5, 10 lub 100 razy pod rząd, a on nigdy nie zduplikuje danych ani nie wywoła błędu bazy. W środowiskach opartych na Dockerze czy rozwiązaniach orkiestracyjnych (jak Kubernetes), gdzie kontenery mogą się restartować i uruchamiać skrypty inicjalizacyjne wielokrotnie, taka odporność na ponowne wywołania jest absolutnym wymogiem.
+
+3. Ładowanie (Load) z wykorzystaniem mapowania ORM
+Zamiast pisać surowe zapytania tekstowe INSERT INTO przedmioty..., skrypt tworzy instancje klas Pythona (Wada, Przedmiot). Biblioteka SQLAlchemy automatycznie tłumaczy te obiekty na bezpieczne instrukcje SQL, co całkowicie chroni aplikację przed atakami typu SQL Injection.
+
+4. Bezpieczeństwo transakcyjne (ACID)
+Zapis do bazy jest otoczony blokiem try...except...finally:
+db.commit(): Wywoływane dopiero po przetworzeniu wszystkich wierszy. Baza danych zatwierdza całą paczkę danych naraz (transakcja).
+db.rollback(): Jeśli podczas przetwarzania tysięcznego wiersza z Excela wystąpi nieoczekiwany błąd, skrypt cofa całą operację zrzutu. Baza wraca do stanu początkowego, chroniąc system przed sytuacją, w której część danych została wgrana, a część nie.
+db.close(): Konstrukcja finally gwarantuje, że niezależnie od tego, czy operacja zakończyła się sukcesem, czy błędem, połączenie z bazą (sesja) zostanie bezpiecznie zamknięte, co zapobiega wyciekom pamięci serwera.
+To świetny kawałek kodu bazodanowego, który można bardzo łatwo udokumentować na schematach przepływu danych (Data Flow Diagram) w pracy inżynierskiej!
+
+Oto krótkie podsumowanie plików .py, które (sądząc po importach i strukturze) tworzą Twój projekt. Taki podział to absolutny standard i dobra praktyka przy pracy z bazami danych w Pythonie (szczególnie przy użyciu SQLAlchemy):
+
+1. data_import.py (Skrypt zasilający)
+To plik, nad którym przed chwilą pracowaliśmy. Pełni rolę "ładowarki" (z ang. seeder lub ETL script). Jego zadaniem jest:
+Wczytanie surowych danych z plików zewnętrznych (np. wyeksportowanych z Excela plików CSV).
+Oczyszczenie i ujednolicenie tych danych (np. pozbycie się literówek w nagłówkach, zamiana " PLN" na czyste liczby).
+Bezpieczne "wtłoczenie" ich do bazy danych, z jednoczesnym pilnowaniem, aby nie dodać tych samych informacji podwójnie (pomijanie duplikatów).
+
+2. models.py (Struktura bazy danych)
+Ten plik to "plan architektoniczny" Twojej bazy.
+To w nim zdefiniowane są klasy takie jak ConditionDefect (wady) czy MarketplaceItem (przedmioty).
+Każda klasa odpowiada jednej tabeli w bazie danych, a zmienne wewnątrz nich (np. kod_wady, cena_bazowa) odpowiadają konkretnym kolumnom.
+Zapewnia, że Python wie, jakiego typu dane (tekst, liczba całkowita, ułamek) mogą zostać zapisane w danym miejscu.
+
+3. database.py (Połączenie z bazą)
+Ten plik to z kolei "kabelek", który łączy Twój kod w Pythonie z samym plikiem/serwerem bazy danych (np. SQLite, PostgreSQL).
+Zwykle zawiera konfigurację silnika (Engine) bazy danych.
+Tworzy obiekt SessionLocal – czyli wirtualną "sesję" z bazą, którą otwierasz, gdy chcesz coś zapisać lub odczytać, a potem grzecznie zamykasz (dokładnie to, co robi początek i koniec funkcji w data_import.py).
+
+Dzięki takiemu podziałowi, jeśli w przyszłości zechcesz dopisać np. interfejs webowy czy nowe funkcje obliczeniowe, będziesz mógł po prostu zaimportować bazę i modele, nie martwiąc się, że wymiesza się to ze skryptem do importowania plików.
